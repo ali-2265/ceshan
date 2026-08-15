@@ -4,15 +4,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    BOT_TOKEN = os.getenv('8541453435:AAEqXEyRE46CydJBPMPoKc87YwmCAHZWP54')
-    API_ID = int(os.getenv('34855392', 0))
-    API_HASH = os.getenv('5e40d435847009c31c24042e2a3c0d3b')
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
+    API_ID = int(os.getenv('API_ID', 0))
+    API_HASH = os.getenv('API_HASH')
     
-    # Proxy settings (Germany) - با خطاگیری
+    # Proxy settings
     PROXY_HOST = os.getenv('PROXY_HOST')
     PROXY_PORT = os.getenv('PROXY_PORT')
     
-    # اگر پروکسی پورت خالی بود یا وجود نداشت، از None استفاده کن
     if PROXY_PORT:
         try:
             PROXY_PORT = int(PROXY_PORT)
