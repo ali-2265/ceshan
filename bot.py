@@ -6,7 +6,7 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("8541453435:AAEqXEyRE46CydJBPMPoKc87YwmCAHZWP54")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN تنظیم نشده است.")
