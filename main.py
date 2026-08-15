@@ -1,9 +1,4 @@
-import sys
-sys.path.append('/opt/render/project/src')
-
 import logging
-from telegram import Update
-...
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from telegram.ext import ContextTypes
