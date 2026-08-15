@@ -1,7 +1,6 @@
 import os
 import asyncio
 from telethon import TelegramClient, errors
-from telethon.tl.functions.account import UpdateProfileRequest
 import json
 from datetime import datetime
 
@@ -17,9 +16,8 @@ class SessionManager:
     async def create_session(self, phone, code, password=None):
         session_path = self.get_session_path(phone)
         
-        # Proxy configuration
         proxy = None
-        if self.config.PROXY_HOST:
+        if self.config.PROXY_HOST and self.config.PROXY_PORT:
             proxy = {
                 'proxy_type': 'socks5',
                 'addr': self.config.PROXY_HOST,
@@ -46,7 +44,6 @@ class SessionManager:
             if not await client.is_user_authorized():
                 await client.send_code_request(phone)
                 await asyncio.sleep(2)
-                
                 await client.sign_in(phone, code)
                 
                 if password:
@@ -80,7 +77,7 @@ class SessionManager:
         session_path = self.get_session_path(phone)
         if os.path.exists(session_path + '.session'):
             proxy = None
-            if self.config.PROXY_HOST:
+            if self.config.PROXY_HOST and self.config.PROXY_PORT:
                 proxy = {
                     'proxy_type': 'socks5',
                     'addr': self.config.PROXY_HOST,
