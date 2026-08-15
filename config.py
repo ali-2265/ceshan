@@ -5,8 +5,7 @@ load_dotenv()
 
 class Config:
     BOT_TOKEN = os.getenv('8541453435:AAEqXEyRE46CydJBPMPoKc87YwmCAHZWP54')
-    API_ID = int(os.getenv('34855392  
-', 0))
+    API_ID = int(os.getenv('34855392', 0))
     API_HASH = os.getenv('5e40d435847009c31c24042e2a3c0d3b')
     
     # Proxy settings (Germany) - با خطاگیری
