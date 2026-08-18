@@ -17,7 +17,7 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8913398447:AAGE6fOpYsTmGajTjQWSLLlb338aH5WP8H8")
 if not TOKEN:
     logger.error("❌ BOT_TOKEN در Environment Variables یافت نشد!")
     sys.exit("لطفاً BOT_TOKEN را در متغیرهای محیطی تنظیم کنید.")
