@@ -3,27 +3,29 @@ import sys
 import logging
 from typing import Dict, Optional
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.dispatcher.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 # ============================================
-# تنظات اولیه
+# تنظیمات اولیه
 # ============================================
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("8913398447:AAGE6fOpYsTmGajTjQWSLLlb338aH5WP8H8")
+TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    logging.error("❌ BOT_TOKEN در Environment Variables یافت نشد!")
+    logger.error("❌ BOT_TOKEN در Environment Variables یافت نشد!")
     sys.exit("لطفاً BOT_TOKEN را در متغیرهای محیطی تنظیم کنید.")
 
-bot = Bot(token=TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+bot = Bot(token=TOKEN)
+dp = Dispatcher(bot, storage=storage)
+dp.middleware.setup(LoggingMiddleware())
 
 # ============================================
 # جدول Mapping مورس - فارسی و انگلیسی
@@ -40,7 +42,7 @@ PERSIAN_TO_MORSE = {
     'ه': '....',  'ی': '..'
 }
 
-# جدول تبدیل حروف انگلیسی به مورس
+# جدول تبدیل حروف انگلیسی به مورس (International Morse Code)
 ENGLISH_TO_MORSE = {
     'a': '.-',    'b': '-...',  'c': '-.-.',  'd': '-..',   'e': '.',
     'f': '..-.',  'g': '--.',   'h': '....',  'i': '..',    'j': '.---',
@@ -59,6 +61,7 @@ NUMBERS_TO_MORSE = {
 # جدول تبدیل علائم رایج به مورس
 SYMBOLS_TO_MORSE = {
     '.': '.-.-.-', ',': '--..--', '?': '..--..', '!': '-.-.--',
+    ':': '---...', ';': '-.-.-.', '-': '-....-', '/': '-..-.',
     ' ': '/'  # فاصله بین کلمات
 }
 
@@ -77,7 +80,7 @@ class MorseStates(StatesGroup):
     waiting_for_morse_to_text = State()
 
 # ============================================
-# دکمه‌های شناور (Inline Keyboard)
+# دکمه‌های Inline Keyboard
 # ============================================
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -111,33 +114,25 @@ def text_to_morse(text: str) -> str:
     """تبدیل متن به کد مورس"""
     result = []
     for char in text:
-        # بررسی وجود کاراکتر در جدول
         if char in ALL_TO_MORSE:
             result.append(ALL_TO_MORSE[char])
         else:
-            # اگر کاراکتر پشتیبانی نمی‌شود، یک جایگزین قرار می‌دهیم
-            result.append('?')
-    # قرار دادن فاصله بین حروف و کلمات
+            result.append('?')  # کاراکتر پشتیبانی نمی‌شود
     return ' '.join(result)
 
 def morse_to_text(morse: str) -> str:
     """تبدیل کد مورس به متن"""
-    # تقسیم کد مورس به بخش‌ها بر اساس فاصله (هر بخش یک حرف)
     morse_parts = morse.split(' ')
     result = []
     
     for code in morse_parts:
-        # حذف فاصله‌های اضافی
         code = code.strip()
         if not code:
             continue
-            
-        # بررسی کد در جدول معکوس
         if code in REVERSE_MORSE_MAP:
             result.append(REVERSE_MORSE_MAP[code])
         else:
-            # اگر کد نامعتبر بود، با علامت سوال جایگزین می‌شود
-            result.append('?')
+            result.append('?')  # کد نامعتبر
     
     return ''.join(result)
 
@@ -154,12 +149,12 @@ def validate_morse_code(morse: str) -> bool:
 # هندلرهای دستورات
 # ============================================
 
-@dp.message(Command("start"))
+@dp.message_handler(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     """هندلر دستور /start"""
-    await state.clear()
+    await state.finish()
     welcome_text = (
-        "👋 سلام! به ربات تبدیل متن به مورس خوش آمدید.\n\n"
+        "👋 سلام! به ربات تبدیل متن به کد مورس خوش آمدید.\n\n"
         "من می‌توانم متن شما را به کد مورس تبدیل کنم یا برعکس.\n"
         "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
     )
@@ -168,19 +163,19 @@ async def cmd_start(message: types.Message, state: FSMContext):
         reply_markup=get_main_menu_keyboard()
     )
 
-@dp.message(Command("help"))
+@dp.message_handler(Command("help"))
 async def cmd_help(message: types.Message, state: FSMContext):
     """هندلر دستور /help"""
-    await state.clear()
+    await state.finish()
     help_text = (
         "🤖 *راهنمای ربات مورس*\n\n"
         "🔹 *متن ➜ مورس*: متن خود را ارسال کنید تا به کد مورس تبدیل شود.\n"
         "🔹 *مورس ➜ متن*: کد مورس را ارسال کنید تا به متن تبدیل شود.\n\n"
         "📌 *پشتیبانی از حروف:*\n"
-        "• فارسی: تمام حروف الفبا\n"
+        "• فارسی: ا ب پ ت ث ج چ ح خ د ذ ر ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ه ی\n"
         "• انگلیسی: a-z\n"
         "• اعداد: 0-9\n"
-        "• علائم: . , ? !\n\n"
+        "• علائم: . , ? ! : ; - /\n\n"
         "📌 *نکات:*\n"
         "• برای فاصله بین کلمات از '/' استفاده کنید.\n"
         "• کد مورس را با فاصله جدا کنید.\n\n"
@@ -188,10 +183,10 @@ async def cmd_help(message: types.Message, state: FSMContext):
     )
     await message.answer(help_text, parse_mode="Markdown", reply_markup=get_main_menu_keyboard())
 
-@dp.callback_query(lambda c: c.data == "back_to_main")
+@dp.callback_query_handler(lambda c: c.data == "back_to_main")
 async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     """برگشت به منوی اصلی"""
-    await state.clear()
+    await state.finish()
     await callback.message.delete()
     await callback.message.answer(
         "🔙 به منوی اصلی بازگشتید.\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
@@ -199,7 +194,7 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data == "help")
+@dp.callback_query_handler(lambda c: c.data == "help")
 async def help_callback(callback: types.CallbackQuery, state: FSMContext):
     """راهنما از طریق دکمه"""
     await cmd_help(callback.message, state)
@@ -209,19 +204,19 @@ async def help_callback(callback: types.CallbackQuery, state: FSMContext):
 # هندلرهای انتخاب حالت
 # ============================================
 
-@dp.callback_query(lambda c: c.data == "to_morse")
+@dp.callback_query_handler(lambda c: c.data == "to_morse")
 async def start_text_to_morse(callback: types.CallbackQuery, state: FSMContext):
     """شروع فرآیند تبدیل متن به مورس"""
     await state.set_state(MorseStates.waiting_for_text_to_morse)
     await callback.message.delete()
     await callback.message.answer(
         "📝 لطفاً متن خود را ارسال کنید.\n\n"
-        "پشتیبانی از حروف فارسی، انگلیسی، اعداد و علائم . , ? !",
+        "پشتیبانی از حروف فارسی، انگلیسی، اعداد و علائم . , ? ! : ; - /",
         reply_markup=get_cancel_keyboard()
     )
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data == "to_text")
+@dp.callback_query_handler(lambda c: c.data == "to_text")
 async def start_morse_to_text(callback: types.CallbackQuery, state: FSMContext):
     """شروع فرآیند تبدیل مورس به متن"""
     await state.set_state(MorseStates.waiting_for_morse_to_text)
@@ -238,11 +233,11 @@ async def start_morse_to_text(callback: types.CallbackQuery, state: FSMContext):
 # هندلرهای دریافت پیام
 # ============================================
 
-@dp.message(MorseStates.waiting_for_text_to_morse)
+@dp.message_handler(state=MorseStates.waiting_for_text_to_morse)
 async def handle_text_to_morse(message: types.Message, state: FSMContext):
     """پردازش متن دریافتی و تبدیل به مورس"""
     if message.text == "❌ لغو":
-        await state.clear()
+        await state.finish()
         await message.answer(
             "❌ عملیات لغو شد.",
             reply_markup=ReplyKeyboardRemove()
@@ -254,7 +249,6 @@ async def handle_text_to_morse(message: types.Message, state: FSMContext):
         return
     
     try:
-        # دریافت متن و تبدیل
         text = message.text.strip()
         if not text:
             await message.answer(
@@ -263,15 +257,10 @@ async def handle_text_to_morse(message: types.Message, state: FSMContext):
             )
             return
         
-        # تبدیل به مورس
         morse_result = text_to_morse(text)
-        
-        # نمایش نتیجه
         result_text = f"✅ *نتیجه تبدیل:*\n\n```\n{morse_result}\n```"
         
-        # مدیریت پیام‌های طولانی
         if len(result_text) > 4000:
-            # تقسیم به چند پیام
             parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
             for part in parts:
                 await message.answer(part, parse_mode="Markdown")
@@ -284,17 +273,17 @@ async def handle_text_to_morse(message: types.Message, state: FSMContext):
         )
         
     except Exception as e:
-        logging.error(f"خطا در تبدیل متن به مورس: {e}")
+        logger.error(f"خطا در تبدیل متن به مورس: {e}")
         await message.answer(
             "⚠️ خطایی در پردازش رخ داد. لطفاً دوباره تلاش کنید.",
             reply_markup=get_cancel_keyboard()
         )
 
-@dp.message(MorseStates.waiting_for_morse_to_text)
+@dp.message_handler(state=MorseStates.waiting_for_morse_to_text)
 async def handle_morse_to_text(message: types.Message, state: FSMContext):
     """پردازش کد مورس دریافتی و تبدیل به متن"""
     if message.text == "❌ لغو":
-        await state.clear()
+        await state.finish()
         await message.answer(
             "❌ عملیات لغو شد.",
             reply_markup=ReplyKeyboardRemove()
@@ -306,7 +295,6 @@ async def handle_morse_to_text(message: types.Message, state: FSMContext):
         return
     
     try:
-        # دریافت کد مورس
         morse_text = message.text.strip()
         if not morse_text:
             await message.answer(
@@ -315,23 +303,17 @@ async def handle_morse_to_text(message: types.Message, state: FSMContext):
             )
             return
         
-        # اعتبارسنجی کد مورس
         if not validate_morse_code(morse_text):
             await message.answer(
-                "⚠️ کد مورس نامعتبر است!\n"
-                "لطفاً از فاصله بین کدها استفاده کنید و مطمئن شوید کدها صحیح هستند.\n"
+                "❌ کد مورس نامعتبر است. لطفاً کد را بررسی کنید.\n\n"
                 "مثال: .... . .-.. .-.. --- / .-- --- .-. .-.. -..",
                 reply_markup=get_cancel_keyboard()
             )
             return
         
-        # تبدیل به متن
         text_result = morse_to_text(morse_text)
-        
-        # نمایش نتیجه
         result_text = f"✅ *نتیجه تبدیل:*\n\n```\n{text_result}\n```"
         
-        # مدیریت پیام‌های طولانی
         if len(result_text) > 4000:
             parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
             for part in parts:
@@ -345,17 +327,13 @@ async def handle_morse_to_text(message: types.Message, state: FSMContext):
         )
         
     except Exception as e:
-        logging.error(f"خطا در تبدیل مورس به متن: {e}")
+        logger.error(f"خطا در تبدیل مورس به متن: {e}")
         await message.answer(
             "⚠️ خطایی در پردازش رخ داد. لطفاً دوباره تلاش کنید.",
             reply_markup=get_cancel_keyboard()
         )
 
-# ============================================
-# هندلرهای عمومی
-# ============================================
-
-@dp.message()
+@dp.message_handler()
 async def handle_other_messages(message: types.Message, state: FSMContext):
     """مدیریت پیام‌های غیرمنتظره"""
     await message.answer(
@@ -367,15 +345,11 @@ async def handle_other_messages(message: types.Message, state: FSMContext):
 # اجرای ربات
 # ============================================
 
-async def main():
-    """تابع اصلی اجرای ربات"""
-    try:
-        logging.info("🚀 ربات در حال اجرا...")
-        await dp.start_polling(bot)
-    except Exception as e:
-        logging.error(f"❌ خطا در اجرای ربات: {e}")
-        sys.exit(1)
-
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    from aiogram import executor
+    try:
+        logger.info("🚀 ربات در حال اجرا...")
+        executor.start_polling(dp, skip_updates=True)
+    except Exception as e:
+        logger.error(f"❌ خطا در اجرای ربات: {e}")
+        sys.exit(1)
