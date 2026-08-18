@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.dispatcher import FSMContext
@@ -14,10 +14,13 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 # تنظیمات اولیه
 # ============================================
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("8913398447:AAGE6fOpYsTmGajTjQWSLLlb338aH5WP8H8")
+TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     logger.error("❌ BOT_TOKEN در Environment Variables یافت نشد!")
     sys.exit("لطفاً BOT_TOKEN را در متغیرهای محیطی تنظیم کنید.")
@@ -31,7 +34,7 @@ dp.middleware.setup(LoggingMiddleware())
 # جدول Mapping مورس - فارسی و انگلیسی
 # ============================================
 
-# جدول تبدیل حروف فارسی به مورس
+# جدول تبدیل حروف فارسی به مورس (Mapping دوطرفه)
 PERSIAN_TO_MORSE = {
     'ا': '.-',    'ب': '-...',  'پ': '.--.',  'ت': '-',     'ث': '...-',
     'ج': '.---',  'چ': '---.',  'ح': '....',  'خ': '---',   'د': '-..',
