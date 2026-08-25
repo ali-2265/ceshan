@@ -21,9 +21,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ====================== دیکشنری کش برای کاربران تأییدشده ======================
-user_verified = {}
-
 # ====================== توابع کمکی ======================
 async def is_user_member(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """
@@ -69,9 +66,8 @@ async def send_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     message_text = (
-        "🔒 *به ربات خوش آمدید!*\n\n"
-        "برای استفاده از امکانات ربات، لطفاً ابتدا در کانال زیر عضو شوید:\n"
-        f"📌 {REQUIRED_CHANNEL}\n\n"
+        "🔒 *برای استفاده از ربات، لطفاً عضو کانال شوید*\n\n"
+        f"📌 کانال: {REQUIRED_CHANNEL}\n\n"
         "✅ پس از عضویت، روی دکمه FINISH کلیک کنید."
     )
     
@@ -80,6 +76,32 @@ async def send_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
+async def send_join_message_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    ارسال پیام عضویت اجباری از طریق Callback (برای زمانی که کاربر روی دکمه‌ای کلیک می‌کند)
+    """
+    query = update.callback_query
+    channel_link = await get_channel_link()
+    
+    keyboard = [
+        [InlineKeyboardButton("📢 JOIN CHANNEL", url=channel_link)],
+        [InlineKeyboardButton("✅ FINISH", callback_data="check_membership")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    message_text = (
+        "🔒 *برای استفاده از ربات، لطفاً عضو کانال شوید*\n\n"
+        f"📌 کانال: {REQUIRED_CHANNEL}\n\n"
+        "✅ پس از عضویت، روی دکمه FINISH کلیک کنید."
+    )
+    
+    await query.message.reply_text(
+        text=message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+    await query.answer()
 
 async def edit_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -95,9 +117,8 @@ async def edit_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     message_text = (
-        "🔒 *به ربات خوش آمدید!*\n\n"
-        "برای استفاده از امکانات ربات، لطفاً ابتدا در کانال زیر عضو شوید:\n"
-        f"📌 {REQUIRED_CHANNEL}\n\n"
+        "🔒 *برای استفاده از ربات، لطفاً عضو کانال شوید*\n\n"
+        f"📌 کانال: {REQUIRED_CHANNEL}\n\n"
         "✅ پس از عضویت، روی دکمه FINISH کلیک کنید."
     )
     
@@ -106,37 +127,28 @@ async def edit_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+    await query.answer()
 
-# ====================== پنل اصلی ربات ======================
-async def show_main_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ====================== دکوراتور بررسی عضویت ======================
+async def membership_required(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    نمایش پنل اصلی ربات بعد از تأیید عضویت
+    تابع کمکی برای بررسی عضویت قبل از اجرای هر قابلیت
     """
-    await update.message.reply_text(
-        "🎯 *پنل اصلی ربات*\n\n"
-        "✅ عضویت شما با موفقیت تأیید شد!\n"
-        "از امکانات زیر استفاده کنید:\n\n"
-        "/help - راهنما\n"
-        "/info - اطلاعات ربات\n"
-        "/start - نمایش این پیام",
-        parse_mode='Markdown'
-    )
-
-async def show_main_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    نمایش پنل اصلی از طریق Callback (بعد از کلیک FINISH)
-    """
-    query = update.callback_query
-    await query.message.delete()
-    await query.message.reply_text(
-        "🎯 *پنل اصلی ربات*\n\n"
-        "✅ عضویت شما با موفقیت تأیید شد!\n"
-        "از امکانات زیر استفاده کنید:\n\n"
-        "/help - راهنما\n"
-        "/info - اطلاعات ربات\n"
-        "/start - نمایش این پیام",
-        parse_mode='Markdown'
-    )
+    user_id = update.effective_user.id
+    
+    # بررسی عضویت لحظه‌ای از طریق API
+    if await is_user_member(user_id, context):
+        return True
+    
+    # کاربر عضو نیست - نمایش پیام عضویت
+    logger.info(f"User {user_id} is not a member. Showing join message.")
+    
+    if update.message:
+        await send_join_message(update, context)
+    elif update.callback_query:
+        await send_join_message_callback(update, context)
+    
+    return False
 
 # ====================== هندلرهای اصلی ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,12 +156,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     هندلر دستور /start
     """
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} started the bot")
     
-    # بررسی عضویت کاربر
+    # بررسی عضویت لحظه‌ای
     if await is_user_member(user_id, context):
-        user_verified[user_id] = True
+        # کاربر عضو است - نمایش پنل اصلی
         await show_main_panel(update, context)
     else:
+        # کاربر عضو نیست - نمایش پیام عضویت
         await send_join_message(update, context)
 
 async def check_membership_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,26 +177,52 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
     
     # بررسی عضویت از طریق API
     if await is_user_member(user_id, context):
-        user_verified[user_id] = True
+        # کاربر عضو است - حذف پیام عضویت و نمایش پنل
+        await query.message.delete()
         await show_main_panel_callback(update, context)
         logger.info(f"✅ User {user_id} verified successfully")
     else:
+        # کاربر عضو نیست - نمایش خطا
         await query.answer(
-            text="❌ You haven't joined the channel yet! Please join first.",
+            text="❌ Please join the channel first.",
             show_alert=True
         )
         logger.info(f"❌ User {user_id} membership check failed")
 
-# ====================== کامندهای نمونه ======================
+async def show_main_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش پنل اصلی ربات بعد از تأیید عضویت
+    """
+    await update.message.reply_text(
+        "🎯 *پنل اصلی ربات*\n\n"
+        "✅ عضویت شما با موفقیت تأیید شد!\n"
+        "از امکانات زیر استفاده کنید:\n\n"
+        "/help - راهنما\n"
+        "/info - اطلاعات ربات",
+        parse_mode='Markdown'
+    )
+
+async def show_main_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش پنل اصلی از طریق Callback (بعد از کلیک FINISH)
+    """
+    query = update.callback_query
+    await query.message.reply_text(
+        "🎯 *پنل اصلی ربات*\n\n"
+        "✅ عضویت شما با موفقیت تأیید شد!\n"
+        "از امکانات زیر استفاده کنید:\n\n"
+        "/help - راهنما\n"
+        "/info - اطلاعات ربات",
+        parse_mode='Markdown'
+    )
+
+# ====================== کامندهای نمونه (با بررسی عضویت) ======================
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     کامند /info - فقط برای کاربران عضو
     """
-    user_id = update.effective_user.id
-    
-    # بررسی عضویت
-    if not await is_user_member(user_id, context):
-        await send_join_message(update, context)
+    # بررسی عضویت قبل از اجرا
+    if not await membership_required(update, context):
         return
     
     await update.message.reply_text(
@@ -197,11 +237,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     کامند /help - فقط برای کاربران عضو
     """
-    user_id = update.effective_user.id
-    
-    # بررسی عضویت
-    if not await is_user_member(user_id, context):
-        await send_join_message(update, context)
+    # بررسی عضویت قبل از اجرا
+    if not await membership_required(update, context):
         return
     
     await update.message.reply_text(
@@ -216,17 +253,30 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر برای کامندهای ناشناخته
     """
-    user_id = update.effective_user.id
-    
-    # بررسی عضویت
-    if not await is_user_member(user_id, context):
-        await send_join_message(update, context)
+    # بررسی عضویت قبل از اجرا
+    if not await membership_required(update, context):
         return
     
     await update.message.reply_text(
         "❌ کامند ناشناخته!\n"
         "از /help برای مشاهده کامندهای موجود استفاده کنید."
     )
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر عمومی برای تمام Callbackهای ربات (به جز FINISH)
+    """
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # بررسی عضویت قبل از اجرا
+    if not await is_user_member(user_id, context):
+        # کاربر عضو نیست - نمایش پیام عضویت
+        await send_join_message_callback(update, context)
+        return
+    
+    # اینجا کد مربوط به سایر دکمه‌های ربات قرار می‌گیرد
+    await query.answer("✅ شما عضو کانال هستید!")
 
 # ====================== تابع اصلی ======================
 def main():
@@ -242,8 +292,11 @@ def main():
     application.add_handler(CommandHandler("info", info_command))
     application.add_handler(CommandHandler("help", help_command))
     
-    # Callback دکمه FINISH
+    # هندلر دکمه FINISH
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
+    
+    # هندلر برای سایر Callbackها (اگر در ربات شما وجود دارند)
+    application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(?!check_membership$).*$"))
     
     # هندلر برای کامندهای ناشناخته
     application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
