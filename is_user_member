@@ -1,0 +1,22 @@
+async def is_user_member(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """
+    بررسی عضویت واقعی کاربر در کانال از طریق Telegram API
+    """
+    try:
+        chat_member = await context.bot.get_chat_member(
+            chat_id=REQUIRED_CHANNEL,
+            user_id=user_id
+        )
+        status = chat_member.status
+        
+        # وضعیت‌های معتبر
+        valid_statuses = [
+            ChatMemberStatus.MEMBER,
+            ChatMemberStatus.ADMINISTRATOR,
+            ChatMemberStatus.CREATOR
+        ]
+        
+        return status in valid_statuses
+    except Exception as e:
+        logger.error(f"Error checking membership for user {user_id}: {e}")
+        return False
