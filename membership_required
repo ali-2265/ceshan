@@ -1,0 +1,17 @@
+async def membership_required(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    تابع کمکی برای بررسی عضویت قبل از اجرای هر قابلیت
+    """
+    user_id = update.effective_user.id
+    
+    # بررسی عضویت لحظه‌ای از طریق API
+    if await is_user_member(user_id, context):
+        return True
+    
+    # کاربر عضو نیست - نمایش پیام عضویت
+    if update.message:
+        await send_join_message(update, context)
+    elif update.callback_query:
+        await send_join_message_callback(update, context)
+    
+    return False
